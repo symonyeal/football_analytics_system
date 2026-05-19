@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Data — keep schema/structure, not bulk downloads
+data/raw/*
+data/processed/*
+data/external/*
+!data/**/.gitkeep
+*.parquet
+*.csv
+*.json
+!tests/**/*.json
+*.xlsx
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Models / artifacts
+*.pt
+*.pth
+*.ckpt
+artifacts/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fas"
+version = "0.1.0"
+description = "Unified Mathematical Football Analytics System — graph theory, network flow, NLP, MILP, and Boolean methods over public soccer event data."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Symon" }]
+keywords = ["football", "soccer", "analytics", "optimization", "graph-theory", "milp", "xt", "epv"]
+
+# Core dependencies (pure-python / well-supported on 3.14).
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "pandas>=2.1",
+    "networkx>=3.2",
+    "scikit-learn>=1.3",
+    "pulp>=2.7",
+    "statsbombpy>=1.11",
+    "matplotlib>=3.8",
+    "mplsoccer>=1.2",
+    "pyarrow>=14.0",
+]
+
+[project.optional-dependencies]
+# Heavy / wheel-availability-sensitive deps. May lag on Python 3.14 — install per-module as needed.
+ml = ["torch>=2.2", "lightgbm>=4.1"]
+gnn = ["torch>=2.2", "torch-geometric>=2.4"]
+nlp = ["cvxpy>=1.4", "cyipopt>=1.4", "cma>=3.3"]
+db = ["sqlalchemy>=2.0", "psycopg2-binary>=2.9"]
+scrape = ["soccerdata>=1.6", "understatapi>=0.4"]
+dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.3"]
+
+[project.scripts]
+fas = "fas.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
