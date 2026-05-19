@@ -906,3 +906,466 @@ passes['completed'] = passes.pass.apply(lambda p: p.get('outcome') is None)
 *End of Project Specification — Version 1.0*
 
 *This document is self-contained. A PhD mathematician / data scientist should be able to implement each module independently following the formulations above, using the referenced libraries and data sources.*
+
+---
+---
+
+# UNIFIED MATHEMATICAL FOOTBALL ANALYTICS SYSTEM
+## Version 2.0 — From Modules to a Coherent, Interactive Product
+### Follow-up Specification: Status, Coherence Architecture, UI, and the Road Ahead
+
+> **Why this addendum exists.** Version 1.0 specified six mathematically rigorous *solvers* (graph, flow, NLP, MILP, Boolean, valuation). They have now been **implemented as the `fas` Python package** (see `src/fas/`, `docs/SPEC.md`). But a pile of solvers is not a *system*. Version 2.0 specifies the **connective tissue** — the canonical entity model, feature store, orchestration DAG, serving API, and **interactive UI** — that turns the modules into one coherent instrument a human can actually *drive*. It also opens **new mathematical frontiers** (uncertainty propagation, optimal transport, game-theoretic equilibria, causal counterfactuals) that only become reachable once the pieces are wired together.
+
+---
+
+## PART 10 — IMPLEMENTATION STATUS (Phase 0 Complete)
+
+### 10.0 Spec → Code reconciliation
+
+The `fas` package implements the v1.0 spec on a core, pure-Python install
+(`numpy/scipy/networkx/pulp/scikit-learn/pandas`). Heavy ML / global-solver
+dependencies are isolated as optional extras (`[ml] [gnn] [nlp]`).
+
+| Spec | Module | State | Notes |
+|---|---|---|---|
+| 0 — schema, loader, id-unify, DDL | `fas.data` | ✅ done | Jaro-Winkler matcher is dependency-free |
+| 1.1–1.3 — networks, 4 centralities, entropy, min-cut | `fas.graph` | ✅ done | Brandes + PageRank power-iteration + preflow-push |
+| 1.4 — GAT collective valuation | `fas.graph.gat_model` | 🟡 stub | needs `[gnn]`; centralities serve as interim feature |
+| 2.1–2.2 — xT value iteration, max-flow build-up | `fas.network_flow` | ✅ done | min-cost max-flow via SSP |
+| 2.3 — bilevel suppression | `…defensive_suppression` | 🟡 partial | McCormick + successive linearization, needs `cvxpy` |
+| 3.1 — EPV U-Net | `fas.nlp.epv_unet` | 🟡 stub | needs `[ml]` (torch) |
+| 3.2 — pass reward-risk optimizer | `…pass_value_nlp` | ✅ done | SLSQP multi-start + ellipsoidal exclusion |
+| 3.3 — trajectory collocation | `…trajectory_opt` | 🟡 stub | needs `[nlp]` (cyipopt) |
+| 3.4 — set-piece Magnus trajectory | `…set_piece_opt` | ✅ done | RK4 + Nelder-Mead |
+| 4.1 — Bradley-Terry, rPCA, PVS, fair value | `…player_valuation` | ✅ done | rPCA via ADMM/PCP |
+| 4.2 — squad MILP (C1–C11) | `…squad_selection` | ✅ done | formation choice + linearized bonus |
+| 4.3 — robust minimax-regret MILP | `…robust_milp` | ✅ done | extensive form; Benders is the scale path |
+| 4.4 — substitution MILP | `…substitution_milp` | ✅ done | gain table injected |
+| 5.1–5.2 — Boolean fns, dual, lattice | `fas.boolean` | ✅ done | decision-list learner + dual involution |
+| 6.2–6.3 — 3-layer norm, dev curves, scouting | `fas.valuation` | ✅ done | Beta career arc fit |
+| 7.1–7.2 — metrics, end-to-end test | `fas.evaluation`, `examples` | ✅ done | `fas demo` runs offline synthetic pipeline |
+
+**Verification gate met:** 19 passing tests; `fas demo` runs graph → xT →
+max-flow → PVS → MILP and returns an *Optimal* squad with a chosen formation.
+
+### 10.1 What "Phase 0" deliberately left out
+
+The implemented stack runs on **synthetic data** and **point estimates**. It has
+no persistence, no learned EPV/GAT models, no way to *see* its own output, and
+no thread that makes module B consume module A automatically. Those four gaps
+define the rest of this document.
+
+---
+
+## PART 11 — THE COHERENCE PROBLEM AND ITS ARCHITECTURE
+
+### 11.0 The thesis
+
+> Six solvers become one system when they all read from, and write to, a single
+> **canonical entity model**, are sequenced by one **orchestration DAG**, share a
+> versioned **feature/model store**, and are exposed through one **serving API**
+> that an **interactive UI** drives. Coherence is an architecture problem first
+> and a math problem second — but the architecture *unlocks* new math (Part 14).
+
+```
+                    ┌──────────────────────────────────────────────┐
+                    │                INTERACTIVE UI                  │
+                    │  Match Lab · Pressing Planner · Squad Builder  │
+                    │     Scouting Hub · Match Theatre               │
+                    └───────────────▲───────────────┬───────────────┘
+                                    │ JSON / WS      │ controls
+                    ┌───────────────┴───────────────▼───────────────┐
+                    │            SERVING API (FastAPI)               │
+                    │  /network /xt /flow /valuation /optimize/solve │
+                    └───────────────▲───────────────┬───────────────┘
+                                    │                │ warm-start re-solve
+        ┌───────────────────────────┴────────────────▼──────────────┐
+        │             ORCHESTRATION DAG (Prefect/Dagster)            │
+        │ ingest → canonicalize → graph/flow/epv → valuation → MILP  │
+        └───▲──────────────▲───────────────▲───────────────▲─────────┘
+            │              │               │               │
+   ┌────────┴───┐  ┌───────┴──────┐ ┌──────┴──────┐ ┌──────┴───────┐
+   │  CANONICAL │  │   FEATURE     │ │   MODEL      │ │   ARTIFACT   │
+   │  ENTITIES  │  │   STORE       │ │   REGISTRY   │ │   STORE      │
+   │ Match/     │  │ (Parquet,     │ │ xT, EPV,     │ │ reports,     │
+   │ Player/    │  │  versioned)   │ │ GAT, β_BT,   │ │ solutions,   │
+   │ TeamSeason │  │               │ │ dev-curves   │ │ Pareto sets  │
+   └────────────┘  └───────────────┘ └─────────────┘ └──────────────┘
+```
+
+### 11.1 The canonical entity model — the spine
+
+Today each module passes raw DataFrames around. Introduce three immutable,
+serializable records that every module reads and enriches. *This is the single
+most important change* — it is what makes PVS feed the MILP feed the scouting
+report without glue code each time.
+
+```python
+# src/fas/entities.py  (NEW)
+@dataclass(frozen=True, slots=True)
+class MatchObject:
+    match_id: int
+    actions: pd.DataFrame                # canonical schema (Part 0)
+    pass_networks: dict[int, PassNetwork]    # team_id -> network
+    centrality: dict[int, pd.DataFrame]      # team_id -> per-player table
+    xt_added: pd.Series                       # action_id -> Δ xT
+    zone_flow: dict[int, BuildupResult]
+    epv_timeline: pd.DataFrame | None         # filled once EPV model exists
+    meta: MatchMeta
+
+@dataclass(frozen=True, slots=True)
+class PlayerSeason:
+    player_uid: int
+    league: str
+    minutes: int
+    features_90: pd.Series        # the 18-vector (Part 4.1 Step 1)
+    graph_features: pd.Series     # betweenness/pagerank/GAT (Part 1)
+    epv_added_90: float
+    pvs: float                    # Part 4.1 Step 4
+    pvs_distribution: np.ndarray  # bootstrap samples (Part 4.3 / Part 14)
+    fair_value_eur: float
+    market_value_eur: float
+    dev_curve: tuple              # (a_p, b_p, f_peak)  Part 6.2 Layer 3
+
+@dataclass(frozen=True, slots=True)
+class TeamSeason:
+    team_id: int
+    bt_strength: float            # β from Bradley-Terry
+    formation_markov: np.ndarray  # Part 5.2 stationary chain
+    squad: list[int]              # player_uids
+```
+
+**Contract:** every module gains a `*.enrich(obj) -> obj` adapter. The DAG is
+then literally a fold over these adapters. Modules never again re-derive a pass
+network or re-fit an xT surface that a sibling already produced.
+
+### 11.2 Feature store & model registry
+
+- **Feature store** — `data/processed/features/{entity}/{version}.parquet`,
+  keyed by `player_uid`/`match_id`, with a `lineage.json` recording source
+  competitions, code git-SHA, and parameter hash. Enables leave-one-season-out
+  CV (Part 7) without recomputation and makes the UI instant (reads, not solves).
+- **Model registry** — `artifacts/models/{name}/{version}/` for the **xT grid**,
+  **EPV U-Net weights**, **GAT weights**, **Bradley-Terry β-vector**, **fair-value
+  θ**, **per-position dev-curve params**. A tiny `registry.json` maps
+  `name -> active version`. Everything downstream pins a version, so a scouting
+  report is always reproducible.
+
+### 11.3 Orchestration: the analytics DAG
+
+```
+ingest_statsbomb ─┐
+ingest_fbref ─────┼─► canonicalize ─► unify_ids ─► build_match_objects
+ingest_tmkt ──────┘                                      │
+                                                         ▼
+                          ┌──────────── graph_features (Part 1)
+                          ├──────────── flow_features  (Part 2: xT, build-up)
+                          ├──────────── epv_features    (Part 3.1 once trained)
+                          └──────────── boolean_patterns (Part 5)
+                                                         │
+                                                         ▼
+                              league_adjust (Bradley-Terry, Part 4.1/6.2)
+                                                         │
+                                                         ▼
+                              build_PlayerSeason ─► PVS ─► fair_value
+                                                         │
+                                          ┌──────────────┼───────────────┐
+                                          ▼              ▼               ▼
+                                   squad_MILP      robust_MILP      scouting_reports
+                                    (Part 4.2)      (Part 4.3)        (Part 6.3)
+```
+
+Implement with **Prefect** (lightweight, pure-Python, good local dev) or
+**Dagster** (stronger asset lineage). Each node caches to the feature store;
+re-runs are incremental on changed inputs only.
+
+---
+
+## PART 12 — UI & INTERACTIVE DISPLAY
+
+### 12.0 Design principles
+
+1. **Show the math, don't hide it.** Every visual encodes a specific quantity
+   (node size = PageRank, edge width = pass volume, heat = xT). A hover reveals
+   the number and its formula.
+2. **Optimization-in-the-loop.** The squad and substitution MILPs are fast
+   enough to **re-solve live** as the user moves a slider. The UI is a control
+   surface over a solver, not a static dashboard.
+3. **Two-tier build.** Ship research value immediately on a Python-native tier;
+   graduate to a product tier only where interactivity demands it.
+
+### 12.1 Architecture: two tiers
+
+| | **Tier A — Research console** | **Tier B — Product** |
+|---|---|---|
+| Frontend | **Streamlit** or **Plotly Dash** | **Next.js + React + TypeScript** |
+| Pitch viz | `mplsoccer` (static) + Plotly (interactive) | **D3 / deck.gl** custom canvas |
+| Graph viz | `networkx` + Plotly | `react-force-graph` / `sigma.js` |
+| Backend | in-process `fas` calls | **FastAPI** + Pydantic, `fas` as lib |
+| Live solve | synchronous (CBC < 1s) | **WebSocket** push, warm-started CBC/HiGHS |
+| Audience | analyst / researcher, today | club staff, scouts, demo |
+| Effort | days | weeks |
+
+**Recommendation:** build **Tier A first** (it is ~80% of the analytical value
+for ~20% of the effort and validates every view), then port the two
+"killer" interactive views (Squad Builder, Match Theatre) to Tier B.
+
+### 12.2 The five core views
+
+#### View 1 — Match Lab (Parts 1 & 2 made visible)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Match: Barcelona 3–0 Sevilla   [La Liga 2020/21]   ▣ Home ▢ Away│
+├───────────────────────────────┬─────────────────────────────┤
+│        PASS NETWORK            │      EXPECTED THREAT (xT)    │
+│   (nodes sized by PageRank,    │   16×12 heatmap, possession  │
+│    placed at avg position,     │   corridors overlaid as      │
+│    edges = pass volume)        │   max-flow ribbons           │
+│         ⊙───⊙                  │   ░░▒▒▓▓██  → goal            │
+│        ╱ ╲ ╱ ╲                 │                              │
+│      ⊙   ⊙   ⊙                 │   build-up potency: 0.48     │
+│                                │   edge connectivity λ: 3     │
+├───────────────────────────────┴─────────────────────────────┤
+│ Phase ◀ [00:00 ━━━●━━━━━━━ 90:00] ▶   entropy H(G): 5.04      │
+│ network velocity ΔG between phases: ▁▃▇▂▁  (spike @ 60' = sub)│
+└─────────────────────────────────────────────────────────────┘
+```
+Interactions: scrub the **phase slider** (6×15-min snapshots) → network and xT
+animate; click a node → that player's centrality time-series; toggle teams.
+
+#### View 2 — Pressing Planner (Part 1.3 min-cut)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Opponent: Sevilla (last 5 matches aggregated)                │
+│  GK ●──────●──────●  ← MIN-CUT edges highlighted RED          │
+│        ╲    │    ╱     these are the lanes to press           │
+│         ●──●──●                                               │
+│  Ranked pressing assignment:                                  │
+│   1. press #6 Fernando → cut to #20 (priority 14.2) ████████  │
+│   2. press #25 Jordán  → cut to #10 (priority  9.1) █████     │
+│   3. press #16 Navas   → cut to #7  (priority  6.4) ███       │
+│  Pressing energy budget B: [────●──── 60%]  (re-solve)        │
+└─────────────────────────────────────────────────────────────┘
+```
+Moving the **budget slider** re-runs the §2.3 suppression program and re-ranks.
+
+#### View 3 — Squad Builder (Part 4 — the flagship)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ FORMATION: ▼ 4-3-3   Budget €[──●──── 80m]  Wage £[──●─ 3m/wk] │
+│ Young ≤23 ≥ [3]   Old ≥30 ≤ [5]   Homegrown ≥ [4]   γ cohesion │
+├────────────────────────────────┬─────────────────────────────┤
+│        PITCH (optimal XI)       │   BENCH / SQUAD (S=23)       │
+│            ⓖⓚ                   │   ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○    │
+│      ⓛⓑ ⓒⓑ ⓒⓑ ⓡⓑ              │                              │
+│        ⓒⓜ ⓒⓜ ⓒⓜ               │   Objective:   10.88         │
+│      ⓛⓦ   ⓢⓣ   ⓡⓦ             │   Opt. gap:    0.0%          │
+│                                 │   Solve:       0.3s          │
+├────────────────────────────────┴─────────────────────────────┤
+│ SENSITIVITY (shadow prices):  +€1m budget → +0.04 quality      │
+│                               −1 young-quota → +0.11 quality    │
+│ PARETO FRONT  quality ▲   ●you-are-here                        │
+│               │   ●  ●                                          │
+│               │ ●        navigate ◀ youth ─── budget ▶          │
+│               └──────────────────► cohesion                     │
+└──────────────────────────────────────────────────────────────┘
+```
+**The loop:** any slider/formation change → API `/optimize/solve` with a
+**warm start** from the current solution → CBC/HiGHS returns in <1s → the XI
+**diffs** (players in green/out red). The **Pareto explorer** (Part 9.4 / Part
+14.2) lets the user walk the quality-youth-budget-cohesion trade surface.
+
+#### View 4 — Scouting Hub (Part 6.3)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ ◍ Player radar (8 league-adj. percentile axes)   FAIR VALUE  │
+│        attack ▲                                   €42m model  │
+│      build  ╱│╲  defend                           €28m market │
+│           ╱  │  ╲                                 GAP +50% ✅  │
+│   centrality──┼──aerial          RECOMMENDATION: BUY ≤ €38m   │
+│           ╲  │  ╱                                            │
+│      press  ╲│╱  passing      Similar players (OT distance):  │
+│        carry ▼                  1. … 2. … 3. …               │
+│ Filter: pos[CM] age≤[24] league[any] gap≥[+20%]  → ranked    │
+│ Undervalued targets table ▼ (top 10 by valuation gap)        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### View 5 — Match Theatre (Parts 3 & 4.4 — live/replay)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ EPV timeline ▁▂▅▇▅▃▂▁▃▇█▅ ← goals as ▲ jumps (Lévy, Part 14.6)│
+│ minute ◀ [━━━●━━━━━━] 67'  scoreline 1-1                       │
+├────────────────────────────┬────────────────────────────────┤
+│ SUBSTITUTION OPTIMIZER      │ SET-PIECE DESIGNER (Part 3.4)   │
+│ best move: #11 OFF, #19 ON  │  corner → Magnus trajectory     │
+│ at 72'  ΔEPV +0.08          │  target zone ▣  wall ▢          │
+│ subs left: 2  [apply]       │  v₀,ω solved → landing ✕        │
+├────────────────────────────┴────────────────────────────────┤
+│ PASS VALUE map (Part 3.2): for ball-carrier at ●, best target │
+│  shows V=R−K surface, optimal pass ➤, risk ellipses (defenders)│
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 12.3 Visual encoding contract (math → pixels)
+
+| Quantity | Module | Encoding |
+|---|---|---|
+| PageRank π(v) | 1.1 | node **radius** |
+| Pass volume W[i,j] | 1.1 | edge **width** + opacity |
+| Betweenness C_B | 1.1 | node **halo** thickness |
+| Min-cut edges | 1.3 | edge **red**, dashed |
+| xT(x,y) | 2.1 | pitch **heat** (sequential colormap) |
+| Max-flow corridor | 2.2 | **ribbon** width = flow units |
+| Network entropy H | 1.1 | gauge / sparkline |
+| EPV(s) | 3.1 | **timeline** area + goal jumps |
+| PVS percentile | 4.1 | radar **axis** + bar fill |
+| Valuation gap | 4.1/6 | **diverging** color (green=undervalued) |
+| Pareto point | 9.4 | scatter on trade-off surface |
+| Bootstrap PVS dist. | 4.3/14 | **violin** / band on radar |
+
+### 12.4 Latency budget (why live solve is feasible)
+
+The squad MILP on ~200 candidates solves to optimality in **<1s with CBC** and
+**<200ms with HiGHS** when **warm-started** from the incumbent. Strategy:
+keep the model object resident in the API process; on a control change, mutate
+only the changed RHS/objective coefficients and re-`solve()` with the previous
+basis. Substitution and pressing models are smaller still. Only the **robust
+MILP (K scenarios)** and **Pareto sweep** run async with a WebSocket progress
+push.
+
+---
+
+## PART 13 — REMAINING WORK: PHASED ROADMAP
+
+### Phase 1 — The real data spine (unlocks everything)
+- StatsBomb ingest at scale (`statsbombpy` → canonical Parquet, all open comps).
+- FBref per-90 scrape via `soccerdata`; Transfermarkt values via `transfermarkt-api`.
+- Run the **Jaro-Winkler id-unification** for real; build the `player_uid` table.
+- Stand up the **PostgreSQL** schema (`schema.sql`) or DuckDB for local dev.
+- **Deliverable:** populated `MatchObject`/`PlayerSeason` records for ≥3 leagues.
+- **Acceptance:** `fas demo --real` runs the pipeline on a real competition.
+
+### Phase 2 — Learned models (turns stubs into science)
+- **EPV U-Net** (Part 3.1): build state tensors, train, register weights;
+  hit **ECE ≤ 0.02, AUC ≥ 0.72** (Part 7.1). Requires `[ml]`.
+- **GAT** (Part 1.4): possession graphs → ΔEPV; export per-player attention as
+  the `graph_contribution` feature. Requires `[gnn]`.
+- **LightGBM substitution model** (Part 4.4): historical sub outcomes → gain table.
+- **Trajectory collocation** (Part 3.3): wire IPOPT via `cyipopt`.
+- **Acceptance:** model registry holds versioned, calibrated EPV + GAT; PVS
+  feature vector is fully populated (no synthetic placeholders).
+
+### Phase 3 — Coherence layer
+- Implement `fas.entities` + `*.enrich()` adapters on every module.
+- Feature store + model registry + lineage.
+- Orchestration DAG (Prefect).
+- **Acceptance:** changing one upstream parameter incrementally re-materializes
+  only affected downstream assets; a scouting report is reproducible from SHAs.
+
+### Phase 4 — UI (Tier A then B)
+- Tier A Streamlit/Dash for all five views.
+- FastAPI serving layer; port Squad Builder + Match Theatre to Tier B with
+  warm-started live solve over WebSocket.
+- **Acceptance:** end-to-end demo (Part 7.2) driven entirely from the UI; squad
+  re-solves <1s on slider change; domain-expert plausibility ≥ 7/10.
+
+### Phase 5 — Research extensions (Part 9 → Part 14, productionized)
+See Part 14. Each becomes a notebook + a module + (where relevant) a UI affordance.
+
+### Effort / dependency summary
+
+```
+Phase 1 ─► Phase 2 ─► Phase 3 ─► Phase 4 ─► Phase 5
+ data       models     wiring      UI         research
+ (core)     ([ml]/[gnn])(prefect)  (web)      (cvxpy/torch)
+```
+
+---
+
+## PART 14 — NEW MATHEMATICAL FRONTIERS (deepening the contribution)
+
+These extend Part 9 and are *enabled* by the coherence layer — they require
+modules to exchange **distributions and structure**, not just point scalars.
+
+### 14.1 Uncertainty propagation end-to-end (Bayesian / conformal)
+Replace point PVS with **calibrated predictive distributions** (conformal
+prediction on the fair-value residuals; Bayesian posterior on Bradley-Terry β).
+Propagate them through to the **robust MILP** (Part 4.3) so the scenarios
+`ξ^(k)` are *principled posterior draws*, not bootstrap heuristics. UI: violin
+bands on every PVS. *Contribution:* coverage-guaranteed squad robustness.
+
+### 14.2 Multi-objective Pareto front (ε-constraint, navigable)
+Compute the full **quality / youth / budget / cohesion** Pareto frontier via the
+ε-constraint method (sweep ε on three objectives, solve the MILP at each grid
+point), store the frontier as an artifact, and let the UI **navigate** it.
+*Contribution:* analytic characterization of the trade-off surface’s shape and
+its supporting prices.
+
+### 14.3 Optimal transport for cross-league style (deepens Part 6)
+Model each player as a **distribution over action types/zones**; compute
+**Wasserstein distances** between players and **Wasserstein barycenters** per
+league. League adjustment becomes an **OT map** from one league’s style measure
+to the reference league’s — a more faithful normalization than scalar shrinkage.
+*Contribution:* "style translation" — what a player’s output *becomes* in a new
+league, not just a rescale.
+
+### 14.4 Graph signal processing on pass networks (deepens Part 9.3)
+Treat player metrics as **signals on the pass graph**; apply **spectral filters**
+of the Laplacian `L = D − A`. Test the **Fiedler-value ↔ pressing-resilience**
+conjecture across 5 seasons; design a **low-pass tactical filter** that denoises
+possession value. *Contribution:* a spectral theory of team structure.
+
+### 14.5 Game-theoretic pressing equilibria (deepens Part 2.3)
+Recast the suppression bilevel as a **Stackelberg game** (defender leads,
+attacker’s max-flow follows) and compute equilibrium pressing strategies; study
+mixed strategies over pressing triggers (ties to the Part 5 Boolean traps).
+*Contribution:* equilibrium pressing policy with regret bounds.
+
+### 14.6 Streaming / online inference for live matches
+**Recursive Bayesian xT** and a **Kalman-style EPV tracker** updated per event,
+so Match Theatre runs **live**, not just on replays. Model EPV jumps at goals /
+red cards as a **Lévy process** (Part 9.5) and derive **optimal substitution
+stopping times**. *Contribution:* real-time decision support with explicit jump
+risk.
+
+### 14.7 Causal counterfactuals for transfers
+A **do-calculus / potential-outcomes** layer: estimate the counterfactual win
+contribution of *adding player i to club C* (adjusting for confounders via the
+pass-network structure as the adjustment set). Connects valuation (Part 4/6) to
+**actual outcomes**, and powers a UI "what-if signing" simulation.
+*Contribution:* moving from correlation (PVS) to causal squad impact.
+
+---
+
+## PART 15 — DEFINITION OF DONE (system-level)
+
+The system is "v2.0 complete" when a user can, **in the UI, in one session**:
+
+1. Pick a real competition; the DAG materializes all entities (Phase 1–3).
+2. Open **Match Lab** and scrub a real match’s pass network + xT + flow.
+3. Open **Pressing Planner**, set a budget, and get min-cut press targets.
+4. Open **Squad Builder**, set €80m / £3m-wk / age & homegrown quotas, pick a
+   formation, and watch the **MILP re-solve live** with sensitivity + a
+   navigable **Pareto front** and **uncertainty bands**.
+5. Open **Scouting Hub**, filter to undervalued CMs ≤24, and export a
+   reproducible **scouting report** (pinned model versions).
+6. Open **Match Theatre** and get an EPV-optimal substitution and a set-piece
+   delivery solution.
+
+…with the Part 7 metric gates met (**ECE ≤ 0.02, AUC ≥ 0.72, ARI ≥ 0.70,
+log-value RMSE ≤ 0.35**), squad re-solve **<1s**, and a domain-expert
+plausibility score **≥ 7/10**.
+
+---
+
+*End of Project Specification — Version 2.0*
+
+*Version 1.0 specified the mathematics. Version 2.0 specifies how the mathematics
+becomes a coherent, interactive instrument — and the new mathematics that the
+instrument, in turn, makes possible.*
