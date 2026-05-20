@@ -11,6 +11,11 @@ A research-grade soccer analytics stack built on public event data
     fas.boolean       tactical Boolean functions + formation lattice (Part 5)
     fas.valuation     cross-league normalization + scouting (Part 6)
     fas.evaluation    calibration, sensitivity, end-to-end tests (Part 7)
+    fas.entities      canonical MatchObject / PlayerSeason / TeamSeason spine
+    fas.foundations   v3 point-process and performance-measure foundations
+    fas.performance   v3 player/team performance inference
+    fas.headtohead    v3 matchup and predictive-distribution models
+    fas.inference     v3 higher-order inference and insight extraction
 
 See README.md for full mathematical formulations.
 """
