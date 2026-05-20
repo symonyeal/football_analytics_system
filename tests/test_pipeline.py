@@ -17,6 +17,9 @@ def test_full_pipeline_produces_squad():
     out = run_demo()
     assert out["net"].n > 0
     assert out["squad"].status in ("Optimal", "Feasible", "Not Solved")
+    assert out["match"].intensity_surface is not None
+    assert out["summary"]["rapm_leader"] in out["net"].players
+    assert out["summary"]["mdp_mean_value"] >= 0.0
 
 
 def test_set_piece_lands_near_target():

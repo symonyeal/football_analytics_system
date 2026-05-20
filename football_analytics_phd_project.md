@@ -1369,3 +1369,71 @@ plausibility score **≥ 7/10**.
 *Version 1.0 specified the mathematics. Version 2.0 specifies how the mathematics
 becomes a coherent, interactive instrument — and the new mathematics that the
 instrument, in turn, makes possible.*
+
+---
+
+## VERSION 3.1 - NEXT PHASE: LOCAL DATA FIRST, THEN REAL DATA
+
+The next phase is not another collection of models. It is the integration pass
+that makes the existing work visible when the project is run.
+
+### Current runnable contract
+
+`fas demo` now follows this order:
+
+1. Look for a canonical actions file under `data/`.
+2. If one is found, load and validate it.
+3. If none is found, use the synthetic fallback.
+4. Run the core v1 path: pass network, xT, zone flow, PVS, squad MILP.
+5. Run the v3 path: entity spine, point-process intensity, RAPM, skill, IRT,
+   form, roles, Dixon-Coles scoring, possession MDP, pitch control, matchup
+   models, Hawkes momentum, style drift, shape features, causality, and
+   FDR-controlled insights.
+6. Print a compact summary and, from the CLI, write
+   `data/processed/demo_summary.json`.
+
+This keeps the demo useful before a real dataset is checked in, while making the
+same path ready for real data.
+
+### Data phase
+
+The next implementation pass should materialize one small public dataset into:
+
+```text
+data/processed/actions.parquet
+```
+
+The file should use the canonical action columns:
+
+```text
+match_id, period, timestamp_ms, player_id, team_id, action_type,
+x_start, y_start, x_end, y_end, outcome
+```
+
+StatsBomb Open Data is the preferred source. If network access is unavailable,
+the code should continue to explain the expected local file and run the
+synthetic fallback.
+
+### Acceptance
+
+The acceptance shape is deliberately simple:
+
+```bash
+fas demo
+fas demo --data data/processed/actions.parquet
+pytest
+```
+
+The output should name the data source, show the old core metrics, show the v3
+metrics, and finish with a feasible or optimal squad MILP result. No UI should
+be built until this data spine is steady.
+
+### Documentation rule
+
+At the end of each pass, update:
+
+- `README.md`
+- `docs/SPEC.md`
+- `docs/NEXT_PHASE_PROMPT.md`
+- `docs/DECISIONS.md`
+- this project document

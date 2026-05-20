@@ -9,6 +9,7 @@ from fas.foundations import (
     entity_contribution_measure,
     fatigue_operator,
     fit_intensity_surface,
+    functorial_statement,
     performance_functional,
     value_density_from_xt,
 )
@@ -52,3 +53,7 @@ def test_match_object_intensity_enrich_adapter():
     match = MatchObject(match_id=1, actions=actions)
     out = enrich(match)
     assert out.intensity_surface is not None
+
+
+def test_functorial_statement_mentions_entity_spine():
+    assert "entity spine" in functorial_statement()

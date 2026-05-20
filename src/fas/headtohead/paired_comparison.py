@@ -112,7 +112,7 @@ def enrich(matchup: Matchup, model: PairedComparisonModel, *, home: float = 0.0,
 
 
 def _outcome_codes(s: pd.Series) -> np.ndarray:
-    if np.issubdtype(s.dtype, np.number):
+    if pd.api.types.is_numeric_dtype(s):
         arr = s.to_numpy(dtype=float)
         return np.where(arr > 0.5, 2, np.where(arr < 0.5, 0, 1))
     mapping = {"loss": 0, "away": 0, "tie": 1, "draw": 1, "win": 2, "home": 2}

@@ -9,6 +9,7 @@ from fas.foundations.context_ops import (
     opponent_strength_operator,
     venue_operator,
 )
+from fas.foundations.coherence import AnalyticsDiagram, functorial_statement
 from fas.foundations.performance_functional import (
     ContributionMeasure,
     PerformanceEstimate,
@@ -26,6 +27,8 @@ __all__ = [
     "game_state_operator",
     "opponent_strength_operator",
     "venue_operator",
+    "AnalyticsDiagram",
+    "functorial_statement",
     "ContributionMeasure",
     "PerformanceEstimate",
     "entity_contribution_measure",

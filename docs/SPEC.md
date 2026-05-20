@@ -1,155 +1,118 @@
-# Unified Mathematical Football Analytics System — Specification (v1.0)
+# `fas` Spec Map
 
-This document maps each part of the project specification to its
-implementation in `src/fas/`, with the governing mathematical formulation
-restated for each module. It is the canonical reference for the codebase.
+This document is a map from the project specification to the code. It is not a
+second README and it does not repeat every derivation. The long-form prompt in
+`football_analytics_phd_project.md` is the source for the mathematical detail;
+this file shows where each piece lives.
 
----
+## Shared Data Model
 
-## Part 0 — Data Infrastructure → `fas.data`
+Canonical actions use the StatsBomb pitch, `[0, 120] x [0, 80]`, and the table
 
-Canonical action schema
-`A = (t, player_id, team_id, action_type, x_start, y_start, x_end, y_end, outcome, freeze_frame)`
-on the standardized StatsBomb pitch `[0,120] × [0,80]`.
+```text
+(match_id, period, timestamp_ms, player_id, team_id, action_type,
+ x_start, y_start, x_end, y_end, outcome)
+```
 
-| Spec | Code |
+Freeze-frame data is kept in object/JSON form when available.
+
+| Spec area | Code |
 |---|---|
-| Action schema + validation | [`schema.py`](../src/fas/data/schema.py) — `Action`, `validate_actions` |
-| StatsBomb → canonical mapping | [`statsbomb.py`](../src/fas/data/statsbomb.py) — `events_to_actions` |
-| Cross-source id unification (Jaro-Winkler ≥ 0.92 + nationality) | [`unify_ids.py`](../src/fas/data/unify_ids.py) — `match_rosters` |
-| PostgreSQL DDL | [`schema.sql`](../src/fas/data/schema.sql) |
+| Action record and validation | [`src/fas/data/schema.py`](../src/fas/data/schema.py) |
+| StatsBomb conversion | [`src/fas/data/statsbomb.py`](../src/fas/data/statsbomb.py) |
+| Cross-source id matching | [`src/fas/data/unify_ids.py`](../src/fas/data/unify_ids.py) |
+| SQL schema | [`src/fas/data/schema.sql`](../src/fas/data/schema.sql) |
+| Entity spine | [`src/fas/entities.py`](../src/fas/entities.py) |
+| Local action discovery for demos | [`src/fas/examples/synthetic_pipeline.py`](../src/fas/examples/synthetic_pipeline.py) |
 
----
+## v1 Optimizers And Core Analytics
 
-## Part 1 — Graph Theory → `fas.graph`
-
-Weighted directed pass network `G = (V, E, W)`, row-stochastic Markov matrix
-`P[i,j] = W[i,j] / Σ_k W[i,k]`.
-
-- **Degree** `C_D(i) = (d_in + d_out)/(2(n-1))`
-- **Betweenness** `C_B(i) = Σ σ_st(i)/σ_st` (Brandes)
-- **Closeness** on reciprocal-weight distances `d = 1/W`
-- **PageRank** `π = πP` (stationary distribution, steady-state ball touch)
-- **Entropy** `H(G) = -Σ P[i,j] log P[i,j]`
-- **Min-cut pressing** — max-flow/min-cut (GK source → attacking-third sink)
-  via preflow-push, yielding ranked `(presser, target, priority)` triples.
-
-| Spec | Code |
-|---|---|
-| Network construction, entropy, temporal snapshots, network velocity | [`pass_network.py`](../src/fas/graph/pass_network.py) |
-| All four centralities + clustering | [`centrality.py`](../src/fas/graph/centrality.py) |
-| §1.3 Min-cut pressing assignment | [`min_cut_pressing.py`](../src/fas/graph/min_cut_pressing.py) |
-| §1.4 GAT collective valuation (stub, needs `[gnn]`) | [`gat_model.py`](../src/fas/graph/gat_model.py) |
-
----
-
-## Part 2 — Network Flow → `fas.network_flow`
-
-18-zone pitch graph (6 bands × 3 thirds). Expected Threat by value iteration:
-
-`xT(c) = s(c)·g(c) + m(c)·Σ_{c'} T(c→c')·xT(c')`, iterated to `‖Δ‖_∞ < 1e-6`.
-
-Build-up potency = **min-cost max-flow** from defensive-third to attacking-third
-zones (cost = −value, so min-cost = max-reward; successive shortest paths).
-Defensive suppression = bilevel program, single-levelled by LP duality and
-solved by successive linearization + McCormick envelopes.
-
-| Spec | Code |
-|---|---|
-| §2.1 xT surface (value iteration) + per-action xT-added | [`xt_surface.py`](../src/fas/network_flow/xt_surface.py) |
-| §2.1–2.2 zone graph + max-flow build-up | [`max_flow_buildup.py`](../src/fas/network_flow/max_flow_buildup.py) |
-| §2.3 bilevel suppression (needs `[nlp]`/cvxpy) | [`defensive_suppression.py`](../src/fas/network_flow/defensive_suppression.py) |
-
----
-
-## Part 3 — Nonlinear Programming → `fas.nlp`
-
-| Spec | Code | Status |
+| Area | What it does | Code |
 |---|---|---|
-| §3.1 EPV U-Net | [`epv_unet.py`](../src/fas/nlp/epv_unet.py) | stub, needs `[ml]` |
-| §3.2 Pass value `V = R − K`, SQP multi-start + exclusion ellipsoids | [`pass_value_nlp.py`](../src/fas/nlp/pass_value_nlp.py) | implemented (scipy SLSQP) |
-| §3.3 Trajectory optimal control, direct collocation | [`trajectory_opt.py`](../src/fas/nlp/trajectory_opt.py) | stub, needs `[nlp]`/IPOPT |
-| §3.4 Set-piece Magnus-force trajectory | [`set_piece_opt.py`](../src/fas/nlp/set_piece_opt.py) | implemented (RK4 + Nelder-Mead) |
+| Passing graph | Pass networks, entropy, snapshots, velocity | [`pass_network.py`](../src/fas/graph/pass_network.py) |
+| Centrality | Degree, betweenness, closeness, PageRank, clustering | [`centrality.py`](../src/fas/graph/centrality.py) |
+| Pressing cut | Min-cut pressing targets | [`min_cut_pressing.py`](../src/fas/graph/min_cut_pressing.py) |
+| GAT stub | Graph-attention collective valuation | [`gat_model.py`](../src/fas/graph/gat_model.py) |
+| xT | Expected Threat by value iteration | [`xt_surface.py`](../src/fas/network_flow/xt_surface.py) |
+| Buildup flow | 18-zone graph and min-cost max-flow | [`max_flow_buildup.py`](../src/fas/network_flow/max_flow_buildup.py) |
+| Suppression | Defensive flow suppression, optional `cvxpy` | [`defensive_suppression.py`](../src/fas/network_flow/defensive_suppression.py) |
+| EPV stub | U-Net EPV model interface | [`epv_unet.py`](../src/fas/nlp/epv_unet.py) |
+| Pass value | Reward-risk pass optimizer | [`pass_value_nlp.py`](../src/fas/nlp/pass_value_nlp.py) |
+| Trajectory stub | Direct-collocation player movement | [`trajectory_opt.py`](../src/fas/nlp/trajectory_opt.py) |
+| Set pieces | Magnus-force delivery optimizer | [`set_piece_opt.py`](../src/fas/nlp/set_piece_opt.py) |
+| Player value | Bradley-Terry, robust PCA, PVS, fair value | [`player_valuation.py`](../src/fas/milp/player_valuation.py) |
+| Squad MILP | Formation, budget, role, age, quota constraints | [`squad_selection.py`](../src/fas/milp/squad_selection.py) |
+| Robust MILP | Bootstrap/scenario squad robustness | [`robust_milp.py`](../src/fas/milp/robust_milp.py) |
+| Substitutions | In-match substitution optimizer | [`substitution_milp.py`](../src/fas/milp/substitution_milp.py) |
+| Boolean patterns | Decision lists and dual functions | [`pattern_recognition.py`](../src/fas/boolean/pattern_recognition.py) |
+| Formations | Boolean lattice and Markov chain | [`formation_lattice.py`](../src/fas/boolean/formation_lattice.py) |
+| League adjustment | Cross-league feature normalization | [`cross_league_normalization.py`](../src/fas/valuation/cross_league_normalization.py) |
+| Development | Beta-style career curves | [`development_curves.py`](../src/fas/valuation/development_curves.py) |
+| Reports | Scouting report renderer | [`scouting_report.py`](../src/fas/valuation/scouting_report.py) |
 
----
+## v3 Foundations
 
-## Part 4 — MILP: Squad Selection & Valuation → `fas.milp`
+These modules give later models a common language. They are small on purpose.
 
-**PVS pipeline (§4.1):** per-90 features → Bradley-Terry league strength
-`λ_L = mean exp(β)` → Robust PCA `F = L + S` (ADMM/PCP) → embedding `z_i` →
-positional percentile `PVS_i = Φ((z_i−μ_P)/σ_P)` → fair-value WLS regression on
-`log(MarketValue)`.
-
-**Squad MILP (§4.2):** maximize `Σ w_p PVS_i y_ip + γ·NetworkBonus(x)` subject
-to coverage (C1), starting XI (C2), squad size (C3), role links (C4), budget
-(C5), age (C6), quota (C7), formation choice with `δ_f` (C8), synergy (C9),
-flexibility sets (C10), and the linearized `q_ij = x_i x_j` bonus (C11).
-
-| Spec | Code |
+| Spec area | Code |
 |---|---|
-| §4.1 Bradley-Terry, robust PCA, PVS, fair value | [`player_valuation.py`](../src/fas/milp/player_valuation.py) |
-| §4.2 Squad MILP (C1–C11, PuLP/CBC) | [`squad_selection.py`](../src/fas/milp/squad_selection.py) |
-| §4.3 Robust minimax-regret MILP (extensive form / Benders) | [`robust_milp.py`](../src/fas/milp/robust_milp.py) |
-| §4.4 In-match substitution MILP | [`substitution_milp.py`](../src/fas/milp/substitution_milp.py) |
+| Marked point process and intensity surface | [`point_process.py`](../src/fas/foundations/point_process.py) |
+| Performance functional, `Pi(e, W) = integral phi dV_e` | [`performance_functional.py`](../src/fas/foundations/performance_functional.py) |
+| Context operators for strength, game state, venue, fatigue | [`context_ops.py`](../src/fas/foundations/context_ops.py) |
+| Coherence statement for entity enrichment | [`coherence.py`](../src/fas/foundations/coherence.py) |
 
----
+## v3 Performance Models
 
-## Part 5 — Boolean & Dual Functions → `fas.boolean`
-
-Decision-list learner for tactical events; **dual** `f^d(b) = ¬f(¬b)` gives the
-complementary escape conditions. Formations as elements of the Boolean lattice
-`(2^R, ⊆)`; transitions are Hasse edges (`|F △ F'| = 1`); fit a formation
-Markov chain and extract its stationary distribution.
-
-| Spec | Code |
+| Spec area | Code |
 |---|---|
-| §5.1 Decision lists + dual function | [`pattern_recognition.py`](../src/fas/boolean/pattern_recognition.py) |
-| §5.2 Boolean lattice + formation Markov chain | [`formation_lattice.py`](../src/fas/boolean/formation_lattice.py) |
+| Regularized adjusted plus-minus | [`rapm.py`](../src/fas/performance/rapm.py) |
+| Empirical-Bayes skill posteriors | [`bayesian_skill.py`](../src/fas/performance/bayesian_skill.py) |
+| 2PL item-response model | [`irt.py`](../src/fas/performance/irt.py) |
+| Kalman form state | [`form_state.py`](../src/fas/performance/form_state.py) |
+| NMF role discovery | [`roles_nmf.py`](../src/fas/performance/roles_nmf.py) |
+| Dixon-Coles scoring model | [`team_scoring.py`](../src/fas/performance/team_scoring.py) |
+| Possession MDP | [`possession_mdp.py`](../src/fas/performance/possession_mdp.py) |
+| Pitch-control field | [`pitch_control.py`](../src/fas/performance/pitch_control.py) |
+| Fisher-Rao style distribution | [`style_manifold.py`](../src/fas/performance/style_manifold.py) |
 
----
+## v3 Head-To-Head Models
 
-## Part 6 — Cross-League Valuation → `fas.valuation`
-
-Three-layer normalization: (1) within-league inverse-normal percentile,
-(2) Bradley-Terry league factor with feature-specific shrinkage `α_k`,
-(3) Beta-shaped career-curve projection to peak age. Scouting-report generator
-renders the §6.3 format.
-
-| Spec | Code |
+| Spec area | Code |
 |---|---|
-| §6.2 Layers 1–2 normalization | [`cross_league_normalization.py`](../src/fas/valuation/cross_league_normalization.py) |
-| §6.2 Layer 3 development curves | [`development_curves.py`](../src/fas/valuation/development_curves.py) |
-| §6.3 Scouting report | [`scouting_report.py`](../src/fas/valuation/scouting_report.py) |
+| Bradley-Terry-Davidson with covariates | [`paired_comparison.py`](../src/fas/headtohead/paired_comparison.py) |
+| Massey, Colley, PageRank result rankings | [`network_ranking.py`](../src/fas/headtohead/network_ranking.py) |
+| CP matchup tensor factorization | [`matchup_tensor.py`](../src/fas/headtohead/matchup_tensor.py) |
+| Gaussian copula outcome simulation | [`copula_outcomes.py`](../src/fas/headtohead/copula_outcomes.py) |
+| Hawkes momentum model | [`hawkes_momentum.py`](../src/fas/headtohead/hawkes_momentum.py) |
 
----
+## v3 Inference And Insight
 
-## Part 7 — Evaluation → `fas.evaluation`
-
-ECE ≤ 0.02 (EPV calibration), next-goal AUC ≥ 0.72, formation ARI ≥ 0.70,
-log-value RMSE ≤ 0.35, Spearman(PVS, minutes) ≥ 0.55. The offline synthetic
-pipeline ([`examples/synthetic_pipeline.py`](../src/fas/examples/synthetic_pipeline.py),
-run via `fas demo`) is the §7.2 integration test.
-
-| Spec | Code |
+| Spec area | Code |
 |---|---|
-| §7.1 ECE, ARI, log-value RMSE | [`metrics.py`](../src/fas/evaluation/metrics.py) |
-| §7.2 end-to-end pipeline | [`synthetic_pipeline.py`](../src/fas/examples/synthetic_pipeline.py) + [`tests/test_pipeline.py`](../tests/test_pipeline.py) |
+| Shape summaries from persistence features | [`tda_shape.py`](../src/fas/inference/tda_shape.py) |
+| Marchenko-Pastur covariance cleaning | [`rmt_clean.py`](../src/fas/inference/rmt_clean.py) |
+| Sinkhorn style distances and barycenters | [`ot_style.py`](../src/fas/inference/ot_style.py) |
+| Kernel MMD tests and kernel ridge prediction | [`kernel_mmd.py`](../src/fas/inference/kernel_mmd.py) |
+| Granger and transfer-entropy influence | [`causality.py`](../src/fas/inference/causality.py) |
+| Bootstrap, FDR, Shapley, insight templates | [`insight_engine.py`](../src/fas/inference/insight_engine.py) |
 
----
+## Evaluation
 
-## Part 9 — Research Extensions (open problems)
+| Metric/tool | Code |
+|---|---|
+| ECE, ARI, log-value RMSE | [`metrics.py`](../src/fas/evaluation/metrics.py) |
+| Offline integration pipeline | [`synthetic_pipeline.py`](../src/fas/examples/synthetic_pipeline.py) |
+| CLI runner | [`cli.py`](../src/fas/cli.py) |
+| Tests | [`tests/`](../tests) |
 
-1. Strong-duality solution + McCormick-tightness analysis of the pressing
-   bilevel program (§2.3 / `defensive_suppression.py`).
-2. EPV as a martingale; Doob decomposition.
-3. Laplacian spectrum of pass networks — Fiedler value vs. pressing resilience.
-4. Multi-objective squad Pareto front (quality / youth / budget / cohesion) by
-   ε-constraint.
-5. Stochastic EPV with Lévy jumps (goals, red cards) → optimal substitution
-   stopping times.
-6. Transfer-market efficiency test using the §4.1 fair-value model.
+The package uses lightweight fallbacks for the v3 research modules. Optional
+extras (`[bayes]`, `[topo]`, `[ot]`, `[tensor]`, `[pp]`) are available for
+heavier backends when the local Python environment supports them.
 
----
+## Next Phase
 
-*Full prose formulations are in the original project prompt; this document is
-the authoritative spec-to-code map.*
+The next phase is to replace the synthetic fallback with checked-in or
+downloaded public competition data, then persist the same entity outputs in a
+small feature/model store. The current `fas demo` path is the acceptance shape:
+local data is discovered, entities are materialized, v1/v3 metrics run, and a
+summary is written for the UI or notebook layer to read.
