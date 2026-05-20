@@ -71,6 +71,9 @@ def build_pass_network(
         df = df[df["timestamp_ms"] < t_hi_ms]
     df = df.sort_values(["period", "timestamp_ms"]).reset_index(drop=True)
 
+    if df.empty:
+        return PassNetwork([], np.zeros((0, 0)), nx.DiGraph())
+
     # Receiver = next same-team on-ball actor after a completed pass.
     passer = df["player_id"].to_numpy()
     is_completed_pass = (

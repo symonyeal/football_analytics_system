@@ -194,7 +194,10 @@ def run_demo(
     player_entities = _player_entities(players, positions, pvs, action_values, cents, team_id)
     team_entity = TeamSeason(team_id=team_id, league="demo", season="local", squad=players)
 
-    rapm = _demo_rapm(actions, action_values)
+    # RAPM over the same team the pass network is built for, so the leader is
+    # always one of ``net.players`` even when local data spans several teams.
+    team_actions = actions[actions["team_id"] == team_id]
+    rapm = _demo_rapm(team_actions, action_values.loc[team_actions.index])
     skill = fit_hierarchical_skill(actions, positions=positions, n_samples=50)
     irt = fit_irt_2pl(_irt_responses(actions), max_iter=120)
     form = kalman_form(_form_observations(actions, action_values))

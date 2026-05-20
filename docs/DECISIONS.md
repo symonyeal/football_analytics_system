@@ -12,6 +12,41 @@ At the end of each work session, Codex should update this file with:
 
 Newest entries go first.
 
+## 2026-05-20 - Require Runnable Product Data In The One-Shot Prompt
+
+Decision: strengthen the one-shot product prompt so the implementation must
+materialize enough local or deterministic synthetic data for the UI to show
+populated charts immediately, and must tell the user exactly what to run.
+
+Why: the next builder should not leave the user with a design, skeleton, or
+data-hunting exercise. The product pass should end with runnable commands and a
+visible analytics workspace.
+
+Files affected:
+
+- `docs/ONE_SHOT_PRODUCT_PROMPT.md`
+- `docs/DECISIONS.md`
+
+Follow-up: when implemented, verify that `product-build --no-download` creates
+non-empty artifacts and that the UI can launch from those artifacts.
+
+## 2026-05-20 - Add a One-Shot Product Prompt
+
+Decision: add a self-contained product build prompt for the next pass of the
+football analytics system.
+
+Why: the project now needs a single coherent instruction set that ties the
+existing mathematical modules to real/local data, contextual charts, validated
+insights, and a proper UI without losing the repo's local-data-first contract.
+
+Files affected:
+
+- `docs/ONE_SHOT_PRODUCT_PROMPT.md`
+- `docs/DECISIONS.md`
+
+Follow-up: when the prompt is used, update the product artifact contract and UI
+instructions to match the implementation that lands.
+
 ## 2026-05-20 - Make `fas demo` Reflect the v3 Stack
 
 Decision: extend `fas demo` so it first looks for a local canonical actions
@@ -167,3 +202,72 @@ Files affected:
 - `src/fas/headtohead/paired_comparison.py`
 
 Follow-up: prefer pandas dtype helpers when handling pandas extension dtypes.
+
+## 2026-05-20 - Product Layer: Real-Data-First Spine, Artifacts, and UI
+
+Decision: add a `fas.product` package (data spine, deterministic synthetic
+generator, six-layer artifact materializer, loader) and a `fas.ui` package
+(Streamlit workspace + static HTML report). `fas product-build` defaults to
+pulling REAL StatsBomb Open Data (PSG, Ligue 1 2022/23); `--no-download` forces
+a deterministic synthetic fallback for offline/CI.
+
+Why: the engine was complete but not runnable as a product. The product turns
+discrete events into a coherent entity spine, persists artifacts under
+`data/processed/`, and surfaces context-rich charts and FDR-controlled insights.
+The user requirement was explicit: use real data wherever available.
+
+Files affected:
+
+- `src/fas/product/{synthetic,ingest,centralisation,formation,clustering,artifacts,build,loader}.py`
+- `src/fas/ui/{charts,app,report}.py`
+- `src/fas/cli.py` (`product-build`, `ui`, `report` subcommands)
+- `tests/test_product.py`, `tests/conftest.py`
+
+Follow-up: add FBref/Understat/ClubElo adapters for supplementary player and
+fixture context; add 360 freeze-frame ingestion to unlock line-breaking and
+pitch-control precision.
+
+## 2026-05-20 - Fix StatsBomb Loader for statsbombpy Flattened Columns
+
+Decision: make `events_to_actions` read `statsbombpy`'s flattened columns
+(`pass_end_location`, `pass_outcome`, `shot_outcome`, ...) in addition to the
+raw nested-JSON format, and harden `build_pass_network` / `build_zone_graph`
+against empty inputs.
+
+Why: `statsbombpy` flattens nested event objects into columns, so the original
+nested-dict-only parser silently produced `x_end = NaN` for every pass — which
+zeroed xT, emptied zone graphs, and broke real-data ingestion. Empty windows
+(e.g. a half with no events) also crashed the graph builders.
+
+Files affected:
+
+- `src/fas/data/statsbomb.py`
+- `src/fas/graph/pass_network.py`
+- `src/fas/network_flow/max_flow_buildup.py`
+
+Follow-up: add a small fixture-based loader test that exercises both nested and
+flattened event shapes.
+
+## 2026-05-20 - Broaden Real Ingestion to All Leagues / Eras + Polished UI
+
+Decision: make `product-build` default to a broad real-data sample spanning
+*every* StatsBomb competition, season, and team (no team filter), round-robined
+across competition-seasons for league/era breadth and capped by
+`--sb-max-matches` (0 = all). Matchups are computed only within a
+competition+season cohort to avoid an O(T^2) cross product and meaningless
+cross-league pairings. The Streamlit UI gained a professional dark theme and
+global Competition / Season scope filters.
+
+Why: the product should not be fixated on one club. Users want all teams, all
+leagues, and all available timeframes — historical (e.g. 1962 World Cup, Ajax's
+European Cup three-peat) through current (2024 Copa America, 2023/24 Bundesliga).
+
+Files affected:
+
+- `src/fas/product/ingest.py` (`_select_matches` round-robin, `load_statsbomb`)
+- `src/fas/product/artifacts.py` (cohort-bounded matchups)
+- `src/fas/product/build.py`, `src/fas/cli.py` (scope flags)
+- `src/fas/ui/{app.py,theme.py,charts.py}` (theme + scope filters)
+
+Follow-up: add disk caching of downloaded events to speed repeat builds; add a
+cross-league normalization toggle when leagues are mixed in one shortlist.

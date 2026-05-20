@@ -95,6 +95,12 @@ def _xy(loc: Any) -> tuple[Optional[float], Optional[float]]:
 
 
 def _end_location(row: pd.Series) -> tuple[Optional[float], Optional[float]]:
+    # statsbombpy flattens nested objects into columns like ``pass_end_location``.
+    for col in ("pass_end_location", "carry_end_location", "shot_end_location"):
+        val = row.get(col)
+        if isinstance(val, (list, tuple)) and len(val) >= 2:
+            return float(val[0]), float(val[1])
+    # Raw nested-JSON fallback (``sb.events`` with fmt="dict").
     for col in ("pass", "carry", "shot"):
         val = row.get(col)
         if isinstance(val, dict):
@@ -107,9 +113,20 @@ def _end_location(row: pd.Series) -> tuple[Optional[float], Optional[float]]:
 def _outcome(row: pd.Series) -> bool:
     """Success convention: a pass/action is successful iff no failure outcome.
 
-    StatsBomb encodes failure via a nested ``outcome`` dict; its *absence*
-    means success (a completed pass has no ``pass.outcome``).
+    StatsBomb (and ``statsbombpy``) records failure via an ``outcome`` field; a
+    completed pass has *no* ``pass_outcome``. Shots are successful only when the
+    outcome is ``Goal``.
     """
+    typ = row.get("type")
+    # Flattened statsbombpy columns.
+    if typ == "Shot" or "shot_outcome" in row.index:
+        oc = row.get("shot_outcome")
+        if typ == "Shot":
+            return (oc == "Goal") if oc is not None and not _isna(oc) else False
+    if typ == "Pass" or "pass_outcome" in row.index:
+        if typ == "Pass":
+            return _isna(row.get("pass_outcome"))
+    # Raw nested-JSON fallback.
     val = row.get("pass")
     if isinstance(val, dict):
         return val.get("outcome") is None
@@ -119,6 +136,13 @@ def _outcome(row: pd.Series) -> bool:
         name = oc.get("name") if isinstance(oc, dict) else oc
         return name == "Goal"
     return True
+
+
+def _isna(v: object) -> bool:
+    try:
+        return bool(pd.isna(v))
+    except (ValueError, TypeError):
+        return v is None
 
 
 def _timestamp_ms(ev: pd.DataFrame) -> pd.Series:

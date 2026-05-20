@@ -83,6 +83,10 @@ def build_zone_graph(
         & actions["outcome"].astype(bool)
     ].dropna(subset=["x_end", "y_end"]).copy()
 
+    if df.empty:
+        return ZoneGraph(capacity=np.zeros((N_ZONES, N_ZONES)),
+                         value=np.zeros((N_ZONES, N_ZONES)))
+
     df["z0"] = df.apply(lambda r: zone_of(r["x_start"], r["y_start"]), axis=1)
     df["z1"] = df.apply(lambda r: zone_of(r["x_end"], r["y_end"]), axis=1)
     df = df[df["z0"] != df["z1"]]

@@ -38,6 +38,7 @@ topo = ["ripser>=0.6", "gudhi>=3.9; python_version < '3.14'"]
 ot = ["POT>=0.9"]
 tensor = ["tensorly>=0.8"]
 pp = ["hawkeslib>=0.2; python_version < '3.14'"]
+ui = ["streamlit>=1.30", "plotly>=5.18"]
 dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.3"]
 
 [project.scripts]

@@ -53,6 +53,59 @@ pip install -e ".[pp]"      # hawkeslib where available
 Modules that need an optional extra either provide a small core fallback or
 raise a clear error naming the extra.
 
+## The Product (real data first)
+
+On top of the engine there is a runnable analytics product: a local-data-first
+data spine, a six-layer artifact materializer, a loader, and an interactive UI.
+
+```bash
+# 1. Build artifacts. By default this pulls REAL StatsBomb Open Data spanning
+#    EVERY available competition, season, and team — round-robined for breadth
+#    across leagues and eras (e.g. 1962 World Cup … 2024 Copa America).
+python -m fas.cli product-build
+
+# 2. Launch the analytics workspace (auto-builds artifacts if missing).
+python -m fas.cli ui                 # http://localhost:8501
+#    or directly:  streamlit run src/fas/ui/app.py
+```
+
+Offline / CI variants (no network):
+
+```bash
+python -m fas.cli product-build --no-download   # deterministic synthetic fallback
+python -m fas.cli report                         # static HTML report (no Streamlit)
+```
+
+Control the real-data scope (all flags optional; defaults span everything):
+
+```bash
+# more coverage (0 = all available matches; slow):
+python -m fas.cli product-build --sb-max-matches 0
+
+# narrow to one team / competition / season:
+python -m fas.cli product-build --sb-team "Barcelona" \
+    --sb-competition "La Liga" --sb-season "2020/2021"
+```
+
+The workspace's sidebar **Competition / Season** filters scope every view, so
+you can move from the whole corpus down to a single league-season.
+
+**Data priority:** `--data` file → existing user-placed `actions.parquet` →
+real StatsBomb download → deterministic synthetic fallback. The UI badges
+whether you are looking at real, local, or synthetic data, and every chart
+carries its match/team/competition context, sample size, and limitations.
+Synthetic data is event-only and clearly labelled; nothing implies
+tracking-data precision.
+
+Artifacts are written to `data/processed/` (`actions.parquet`,
+`match_artifacts.parquet`, `player_artifacts.parquet`, `team_artifacts.parquet`,
+`matchup_artifacts.parquet`, `insights.parquet`, `product_summary.json`,
+`manifest.json`, plus pass-network, cluster, centralisation, zone-flow,
+formation, xT-surface, and scoreline tables).
+
+The six UI views: **Match Workspace**, **Team Style**, **Player Intelligence**,
+**Matchup Lab**, **Recruitment & Squad**, and **Data Quality**.
+
 ## Quick Start
 
 ```bash
@@ -124,6 +177,8 @@ src/fas/
   inference/      higher-order inference and insight extraction
   evaluation/     calibration and validation metrics
   examples/       offline synthetic pipeline
+  product/        data spine, synthetic generator, six-layer artifact builder
+  ui/             Streamlit analytics workspace + static HTML report
 
 tests/            pytest coverage for core paths
 docs/SPEC.md      compact spec-to-code map

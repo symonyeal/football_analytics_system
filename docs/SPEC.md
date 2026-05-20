@@ -116,3 +116,26 @@ downloaded public competition data, then persist the same entity outputs in a
 small feature/model store. The current `fas demo` path is the acceptance shape:
 local data is discovered, entities are materialized, v1/v3 metrics run, and a
 summary is written for the UI or notebook layer to read.
+
+## Product Layer (real-data-first)
+
+| Concern | Code | Output |
+|---|---|---|
+| Data spine (priority: `--data` → local → real StatsBomb → synthetic) | [`ingest.py`](../src/fas/product/ingest.py) | `DataSpine` + `manifest.json` |
+| Real StatsBomb ingestion (names, positions, formations) | [`ingest.load_statsbomb`](../src/fas/product/ingest.py) | canonical actions + metadata |
+| Deterministic synthetic fallback | [`synthetic.py`](../src/fas/product/synthetic.py) | 6 matches, 4 teams, lineups |
+| L1 events: xT, action value, zones, phases | [`artifacts.enrich_actions`](../src/fas/product/artifacts.py) | `actions.parquet` |
+| L2/L3 space + networks + control | [`artifacts.build_match_layer`](../src/fas/product/artifacts.py) | edges, centralisation, zone-flow |
+| Centralisation (Freeman on PageRank) | [`centralisation.py`](../src/fas/product/centralisation.py) | `centralisation.parquet` |
+| L4 pass clustering (DBSCAN→KMeans) | [`clustering.py`](../src/fas/product/clustering.py) | `pass_clusters.parquet` |
+| L4 formation inference (lineup + phase) | [`formation.py`](../src/fas/product/formation.py) | `formations.parquet` |
+| L5 players/roles/PVS/form/value | [`artifacts.build_player_layer`](../src/fas/product/artifacts.py) | `player_artifacts.parquet` |
+| L6 matchups (Dixon-Coles, BT, style, min-cut) | [`artifacts.build_matchup_layer`](../src/fas/product/artifacts.py) | `matchup_artifacts.parquet`, `scorelines.parquet` |
+| Insight engine (FDR + exploratory cards) | [`artifacts.build_insights`](../src/fas/product/artifacts.py) | `insights.parquet` |
+| Build orchestrator | [`build.py`](../src/fas/product/build.py) | all artifacts + `product_summary.json` |
+| Artifact loader | [`loader.py`](../src/fas/product/loader.py) | `Product` bundle |
+| UI: charts / Streamlit app / HTML report | [`ui/`](../src/fas/ui) | 6 views + static report |
+
+Every long-format `*_artifacts` table carries the context contract: match,
+team, opponent, competition, season, phase, minute window, model name/version,
+sample size, data source, `is_synthetic`, and limitations.

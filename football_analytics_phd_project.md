@@ -1437,3 +1437,85 @@ At the end of each pass, update:
 - `docs/NEXT_PHASE_PROMPT.md`
 - `docs/DECISIONS.md`
 - this project document
+
+---
+
+# Part 8 — The Product Layer (Runnable Football Intelligence)
+
+The mathematical engine (Parts 0–7) is connected into a runnable product: a
+local-data-first **data spine**, a six-layer **artifact materializer**, a
+**loader**, and an interactive **UI**. The product treats the engine as fixed
+and adds the practical glue: real ingestion, persisted artifacts, and
+context-bound visuals.
+
+## 8.1 Data, real vs synthetic
+
+`fas product-build` resolves data by priority:
+
+1. a user-provided canonical actions file (`--data`);
+2. an existing user-placed `data/processed/actions.parquet`;
+3. **real StatsBomb Open Data** (default: a broad sample spanning *every*
+   available competition, season, and team, round-robined for league/era
+   breadth), via `statsbombpy`. Narrow with `--sb-team` / `--sb-competition`
+   / `--sb-season`; raise `--sb-max-matches` (0 = all) for fuller coverage;
+4. a deterministic **synthetic** league (4 teams, 6 matches, full lineups),
+   used only when offline (`--no-download`) or when a download fails.
+
+A representative default build spans the 1962 World Cup through the 2024 Copa
+America — Champions League across decades, multiple domestic leagues, and men's
+and women's competitions — all with real names, modal positions, and Starting-XI
+formations. The workspace's Competition / Season filters scope every view from
+the whole corpus down to a single league-season.
+
+A StatsBomb-loader fix was required: `statsbombpy` returns *flattened* event
+columns (`pass_end_location`, `pass_outcome`, ...), not nested JSON, so the
+canonical loader now reads both shapes. Without it, every real pass lost its
+end location and xT collapsed to zero.
+
+Real ingestion preserves real team names, player names, modal positions, and
+the exact Starting-XI formation. Synthetic data is event-only and clearly
+badged; no path implies tracking-data precision.
+
+## 8.2 The six layers and what each view answers
+
+- **Match Workspace** — one match across event, space, network, and momentum
+  layers: shot map, cumulative-xT timeline, pass network on average positions,
+  build-up corridors, centralisation by phase, validated insights.
+- **Team Style** — formation (lineup vs phase shape), centralisation/entropy
+  trend, pass-cluster atlas (DBSCAN with honest noise), Fisher-Rao style-distance
+  matrix, and a tactical interpretation card (shape vs control).
+- **Player Intelligence** — role-adjusted percentiles, xT/90, PVS, fair vs
+  market value, development projection, Kalman form, contextual insight cards.
+- **Matchup Lab** — Dixon-Coles win/draw/loss and scoreline grid, style
+  distance, Bradley-Terry edge, and min-cut pressing targets (opponent hubs).
+- **Recruitment & Squad** — value-vs-market scatter, role-filtered shortlist,
+  and the squad-selection MILP (PuLP/CBC) recommended XI.
+- **Data Quality** — source manifest, row counts, missing-field audit, 360
+  availability, synthetic warning, and optional-dependency status.
+
+## 8.3 What the real data shows (example: narrowing to PSG 2022/23)
+
+Narrowing the scope (`--sb-team "Paris Saint-Germain" --sb-competition "Ligue 1"
+--sb-season "2022/2023"`) reproduces the known shape of the side: Mbappé and
+Messi dominate xT-added per 90 (≈0.20 each), while Verratti is the top passing
+hub (PageRank), followed by Ramos, Danilo, and Fabián Ruiz. The FDR-controlled
+insight scan correctly flags deep players (keeper, centre-backs, holding
+midfielders) as *below* the league xT-per-action baseline — safe circulation
+feeding threat concentrated in the front two. The same machinery runs across the
+whole multi-league corpus by default.
+
+## 8.4 Optional dependencies and remaining approximations
+
+Streamlit + Plotly + mplsoccer power the UI; the static HTML report is the
+no-Streamlit fallback. Heavier models stay behind extras (`[ml]`, `[gnn]`,
+`[bayes]`, `[topo]`, `[ot]`, `[tensor]`). Without 360 freeze frames,
+line-breaking detection and pitch control remain event-only approximations,
+labelled as such throughout.
+
+## 8.5 Run it
+
+```bash
+python -m fas.cli product-build      # real StatsBomb (PSG, Ligue 1 2022/23)
+python -m fas.cli ui                 # http://localhost:8501
+# offline: python -m fas.cli product-build --no-download && python -m fas.cli report
+```
